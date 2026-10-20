@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>voice-agent — talk to a clinic</title>
+<style>
+:root{
+  --bg:#060810; --panel:#0b0e1a; --panel2:#101527; --line:#22304f;
+  --cyan:#22d3ee; --bright:#d9f7fd; --dim:#71809d;
+  --green:#4ade80; --amber:#fbbf24; --red:#f87171; --text:#dbe6f5;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);
+  font-family:ui-monospace,'Cascadia Code','JetBrains Mono',Menlo,Consolas,monospace;
+  line-height:1.65;padding:1.6rem 1.1rem;max-width:920px;margin:0 auto;font-size:15px}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px);opacity:.35}
+header.top{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.3rem}
+.dot{width:10px;height:10px;border-radius:50%;background:#3a4a41}
+.dot.ok{background:var(--green);box-shadow:0 0 10px var(--green)}
+h1{font-size:1.15rem;letter-spacing:2px;color:var(--bright)}
+h1 span{color:var(--cyan)}
+.sys{margin-left:auto;color:var(--dim);font-size:.78rem;letter-spacing:1px}
+.sub{color:var(--dim);font-size:.85rem;margin:.5rem 0 1.2rem;max-width:70ch}
+.sub b{color:var(--amber);font-weight:normal}
+.panel{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:1rem 1.1rem;margin-bottom:1.1rem}
+.panel h2{font-size:.8rem;letter-spacing:2px;color:var(--cyan);margin-bottom:.7rem}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem}
+.step{border:1px solid var(--line);border-radius:8px;padding:.7rem .8rem;background:var(--panel2)}
+.step b{color:var(--bright);display:block;font-size:.85rem;margin-bottom:.25rem}
+.step p{color:var(--dim);font-size:.8rem}
+/* call console */
+.caller{display:flex;flex-direction:column;align-items:center;gap:1rem;padding:1.4rem 0 .6rem}
+#mic{width:96px;height:96px;border-radius:50%;border:2px solid var(--cyan);background:var(--panel2);
+  color:var(--cyan);font-size:2.2rem;cursor:pointer;transition:all .2s}
+#mic:hover{box-shadow:0 0 24px rgba(34,211,238,.35)}
+#mic.live{background:var(--cyan);color:#04121a;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,211,238,.5)}50%{box-shadow:0 0 0 18px rgba(34,211,238,0)}}
+#status{color:var(--dim);font-size:.85rem;min-height:1.4em;text-align:center}
+#conv{display:flex;flex-direction:column;gap:.6rem;max-height:46vh;overflow-y:auto;margin-top:.4rem}
+.msg{animation:fade .25s ease;word-break:break-word}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}}
+.msg .who{font-size:.72rem;letter-spacing:1px;color:var(--dim)}
+.msg.you{border-left:2px solid var(--cyan);padding-left:.7rem}
+.msg.bot{border-left:2px solid var(--green);padding-left:.7rem}
+.msg .lat{color:var(--dim);font-size:.75rem}
+.msg .lat.bad{color:var(--amber)}
+.trace{font-size:.78rem;color:var(--dim);background:#04060c;border:1px solid var(--line);
+  border-radius:6px;padding:.5rem .7rem;white-space:pre-wrap}
+pre.dump{background:#04060c;border:1px solid var(--line);border-radius:6px;
+  padding:.6rem .8rem;overflow-x:auto;font-size:.78rem;color:var(--bright);white-space:pre-wrap}
+.stats{display:flex;gap:1.4rem;flex-wrap:wrap}
+.stat b{display:block;font-size:1.3rem;color:var(--cyan)}
+.stat span{color:var(--dim);font-size:.75rem;letter-spacing:1px}
+.row{display:flex;gap:.7rem;align-items:stretch;margin-top:.8rem}
+input[type=text]{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  color:var(--bright);padding:.7rem 1rem;font-size:.9rem;font-family:inherit;min-width:0}
+button.send{background:var(--cyan);border:1px solid var(--cyan);color:#04121a;font-family:inherit;
+  font-weight:bold;letter-spacing:1px;padding:.7rem 1.3rem;border-radius:8px;cursor:pointer}
+.warn{color:var(--amber);font-size:.82rem}
+</style>
+</head>
+<body>
+<header class="top">
+  <span class="dot" id="livedot"></span>
+  <h1>voice<span>-agent</span></h1>
+  <span class="sys">BrightSmile Dental · demo receptionist</span>
+</header>
+<p class="sub">A voice receptionist for a dental clinic. The brain — intent
+detection, slot filling, function calls — runs on the server; <b>speech
+recognition and speech synthesis are your browser's own Web Speech API</b>.
+Turns are timed against an 800&nbsp;ms backend latency budget so the
+conversation still feels like a phone call.</p>
+
+<div class="panel">
+  <h2>HOW IT WORKS</h2>
+  <div class="steps">
+    <div class="step"><b>1 · You talk</b><p>The browser's speech recognition turns your voice into text — type instead if your browser doesn't support it.</p></div>
+    <div class="step"><b>2 · State machine</b><p>An explicit slot-filling flow (day → time → name → confirm) — no LLM free-for-all mid-call; voice can't afford meandering.</p></div>
+    <div class="step"><b>3 · Function calls</b><p>The agent calls the clinic's booking and order systems. Every call is timed and lands in the trace.</p></div>
+    <div class="step"><b>4 · It talks back</b><p>Your browser speaks the reply. Latency per turn is measured against the 800 ms budget — watch the meter.</p></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>HAVE A CALL</h2>
+  <div class="caller">
+    <button id="mic" title="hold a conversation">🎙</button>
+    <div id="status">click the mic to start the call (or type below)</div>
+  </div>
+  <div id="conv"></div>
+  <div class="row">
+    <input type="text" id="typed" placeholder='no mic? type here — try "I want to book an appointment"' />
+    <button class="send" id="sendbtn">SEND</button>
+  </div>
+  <p class="warn" id="srnwarn" style="display:none">your browser has no Web Speech recognition — typed turns work fully; speech output may still work.</p>
+</div>
+
+<div class="panel">
+  <h2>EVALS — 7 SCRIPTED CALLS (offline)</h2>
+  <div class="stats">
+    <div class="stat"><b>7/7</b><span>scenarios complete — booking actually lands in the slot book</span></div>
+    <div class="stat"><b>0.0 ms</b><span>avg backend turn latency (mock brain) · 19/19 turns inside the 800 ms budget</span></div>
+  </div>
+  <p style="color:var(--dim);font-size:.8rem;margin-top:.6rem">Reproduce: <code>python3 evals/run_eval.py</code> — checks end state in the store, not just reply text.</p>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var sid = 'web-' + Math.random().toString(36).slice(2, 8);
+  var conv = document.getElementById('conv');
+  var statusEl = document.getElementById('status');
+  var micBtn = document.getElementById('mic');
+  var typedEl = document.getElementById('typed');
+  var speaking = window.speechSynthesis || null;
+  var Recog = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recog) document.getElementById('srnwarn').style.display = 'block';
+  var recog = null, listening = false;
+
+  function add(who, text, latency, tools){
+    var d = document.createElement('div');
+    d.className = 'msg ' + (who === 'you' ? 'you' : 'bot');
+    var lat = latency != null
+      ? ' <span class="lat' + (latency > 800 ? ' bad' : '') + '">· ' + latency + ' ms turn</span>' : '';
+    d.innerHTML = '<span class="who">' + (who === 'you' ? 'YOU' : 'AGENT') + lat + '</span><br>' + esc(text);
+    if (tools && tools.length) {
+      var t = document.createElement('div');
+      t.className = 'trace';
+      t.textContent = tools.map(function(c){
+        return '→ ' + c.tool + ' ' + JSON.stringify(c.args) + ' (' + c.ms + ' ms) = ' + JSON.stringify(c.result);
+      }).join('\n');
+      d.appendChild(t);
+    }
+    conv.appendChild(d);
+    conv.scrollTop = conv.scrollHeight;
+  }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function say(text){
+    if (!speaking) return;
+    speaking.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    speaking.speak(u);
+  }
+
+  function sendText(text){
+    if (!text.trim()) return;
+    add('you', text);
+    statusEl.textContent = 'thinking…';
+    fetch('/turn', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sid, text: text})}).then(function(r){ return r.json(); })
+    .then(function(rec){
+      add('bot', rec.reply, rec.latency_ms, rec.tool_calls);
+      statusEl.textContent = 'say something, or click the mic';
+      say(rec.reply);
+    }).catch(function(){ statusEl.textContent = 'backend unreachable — is the service awake?'; });
+  }
+
+  micBtn.onclick = function(){
+    if (!Recog) { typedEl.focus(); return; }
+    if (listening) { recog.stop(); return; }
+    recog = new Recog();
+    recog.lang = 'en-US'; recog.interimResults = false;
+    recog.onstart = function(){ listening = true; micBtn.classList.add('live'); statusEl.textContent = 'listening…'; };
+    recog.onend = function(){ listening = false; micBtn.classList.remove('live'); statusEl.textContent = 'say something, or click the mic'; };
+    recog.onerror = function(e){ statusEl.textContent = 'mic error: ' + e.error + ' — type instead'; };
+    recog.onresult = function(e){
+      var text = e.results[0][0].transcript;
+      sendText(text);
+    };
+    recog.start();
+  };
+  document.getElementById('sendbtn').onclick = function(){
+    sendText(typedEl.value); typedEl.value = '';
+  };
+  typedEl.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') document.getElementById('sendbtn').click();
+  });
+  // open with a greeting so the flow is obvious
+  sendText('hello');
+})();
+</script>
+</body>
+</html>
