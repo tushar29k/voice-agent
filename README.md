@@ -79,3 +79,20 @@ python3 evals/run_eval.py
 7 scripted calls. Pass = the business store is in the expected end
 state. Latency and budget adherence are reported per run and recorded
 in `evals/eval-history.jsonl`.
+
+Adversarial suites (report-only, frozen three-metric scoring — ASR,
+false-refusal rate, completion under attack):
+
+```
+python3 evals/run_adversarial.py            # 18 hand-written seeds
+python3 evals/generate_variants.py          # regenerate the variants file
+python3 evals/run_adversarial.py variants   # 99 mutated variants + 12 near-miss controls
+python3 evals/run_scenarios.py              # 8 background-voice / poisoned-data scenarios
+python3 evals/make_report.py                # -> evals/adversarial-report.md
+```
+
+Headline: the confirmation gate is a six-pattern vocabulary — every
+bypass that keeps a trigger word legible books (seed ASR 62.5%), the
+same vocabulary refuses natural benign yeses (corpus FRR 35.3%), and
+33 of 137 scripted calls crash on an unparseable utterance at idle.
+Full write-up: [RESEARCH.md](RESEARCH.md).
